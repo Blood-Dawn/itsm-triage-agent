@@ -51,15 +51,28 @@ data/processed/
 *.jsonl
 *.csv
 
-# Model artifacts (regenerated from scripts)
-# Track the package __init__.py but ignore all weight files inside
-models/finetuned/*
-!models/finetuned/__init__.py
+# Model artifacts
+# Ignore training checkpoints (large, not needed at inference)
+models/finetuned/distilbert-lora/checkpoint-*/
 checkpoints/
-*.pt
+
+# Ignore loose weight files at top level
+# (The adapter directory below is explicitly allowed)
 *.pth
 *.bin
-*.safetensors
+
+# ── Adapter weights (include these — only ~620KB, needed for HF Spaces) ──────
+# We un-ignore the specific adapter directory and its files.
+# The gitignore pattern: ignore finetuned/* but allow the adapter subdir.
+models/finetuned/*
+!models/finetuned/distilbert-lora/
+models/finetuned/distilbert-lora/*
+!models/finetuned/distilbert-lora/adapter/
+models/finetuned/distilbert-lora/adapter/*
+!models/finetuned/distilbert-lora/adapter/*.json
+!models/finetuned/distilbert-lora/adapter/*.safetensors
+!models/finetuned/distilbert-lora/adapter/*.pt
+!models/finetuned/distilbert-lora/adapter/README.md
 
 # Logs
 *.log

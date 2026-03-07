@@ -1,0 +1,92 @@
+# deploy/Dockerfile.spaces
+# ─────────────────────────
+# Hugging Face Spaces variant of the main Dockerfile.
+#
+# KEY DIFFERENCES FROM THE MAIN Dockerfile:
+#
+#   1. HF Spaces requires all processes to run as a non-root user (uid 1000).
+#      We create a "user" account and install everything under --user.
+#
+#   2. HF Spaces only exposes a single port — 7860. Streamlit listens on 7860.
+#      The FastAPI server runs internally on 8000. Streamlit calls it via
+#      http://localhost:8000. External traffic only ever sees port 7860.
+#
+#   3. supervisord manages both processes inside a single container:
+#        - uvicorn api.app:app  (port 8000, internal only)
+#        - streamlit run app/... (port 7860, exposed to the internet)
+#
+#   4. We pre-download distilbert-base-uncased at BUILD time so the Space
+#      starts fast. Without this, the first cold start would take ~5 minutes
+#      downloading the base model.
+#
+# HOW TO USE:
+#
+#   Create a new Hugging Face Space:
+#     https://huggingface.co/new-space
+#     SDK: Docker | Hardware: CPU Basic (free)
+#
+#   Push this project to that Space's git repo.
+#   Set ANTHROPIC_API_KEY as a Space secret (Settings → Variables and secrets).
+#   HF will build the image and deploy automatically.
+#
+# SPACE METADATA (put this at the top of README.md in the HF Space repo):
+#
+#   ---
+#   title: ITSM Triage Agent
+#   emoji: 🎫
+#   colorFrom: blue
+#   colorTo: purple
+#   sdk: docker
+#   pinned: false
+#   ---
+
+FROM python:3.11-slim
+
+# ── System deps ───────────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    supervisor \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Non-root user (HF Spaces requirement) ─────────────────────────────────────
+RUN useradd -m -u 1000 user
+USER user
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# ── Python deps ───────────────────────────────────────────────────────────────
+# Install CPU-only torch first (keeps the layer cached separately from app code)
+RUN pip install --user torch==2.6.0+cpu torchvision==0.21.0+cpu \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Install the rest of the deps (excluding torch since we just installed it)
+COPY --chown=user requirements.txt .
+RUN grep -v "^torch" requirements.txt | pip install --user -r /dev/stdin
+
+# ── Source code ───────────────────────────────────────────────────────────────
+COPY --chown=user . .
+
+# ── Pre-download base DistilBERT model at build time ─────────────────────────
+# This bakes the 268 MB base model into the image layer so the Space starts in
+# ~10 seconds instead of ~5 minutes on cold start.
+RUN python -c "\
+from transformers import DistilBertTokenizerFast, DistilBertModel; \
+print('Downloading distilbert-base-uncased tokenizer...'); \
+DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased'); \
+print('Downloading distilbert-base-uncased model...'); \
+DistilBertModel.from_pretrained('distilbert-base-uncased'); \
+print('Done.')"
+
+# ── supervisord config ────────────────────────────────────────────────────────
+COPY --chown=user deploy/supervisord.conf /app/supervisord.conf
+
+# ── Expose Streamlit port (the only port HF Spaces makes public) ──────────────
+EXPOSE 7860
+
+# supervisord starts both uvicorn and streamlit
+CMD ["supervisord", "-c", "/app/supervisord.conf"]

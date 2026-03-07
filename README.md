@@ -248,6 +248,57 @@ The Docker job only runs if lint and tests pass.
 
 ---
 
+## Deployment (Hugging Face Spaces)
+
+The live demo runs on Hugging Face Spaces (free CPU tier). Both the FastAPI server
+and the Streamlit UI run inside a single Docker container managed by supervisord.
+
+**One-time setup:**
+
+1. Go to [huggingface.co/new-space](https://huggingface.co/new-space)
+   - Space name: `itsm-triage-agent`
+   - SDK: **Docker**
+   - Hardware: **CPU Basic** (free)
+
+2. Clone the Space repo and copy this project into it:
+```bash
+git clone https://huggingface.co/spaces/YOUR_HF_USERNAME/itsm-triage-agent hf-space
+cp -r . hf-space/
+cd hf-space
+```
+
+3. Copy the HF Spaces Dockerfile into place:
+```bash
+cp deploy/Dockerfile.spaces Dockerfile
+```
+
+4. Add the Space metadata header to the top of `README.md` in the Space repo:
+```yaml
+---
+title: ITSM Triage Agent
+emoji: 🎫
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+```
+
+5. Set your Anthropic API key as a Space secret (for the baseline backend):
+   - Space → Settings → Variables and secrets → New secret
+   - Name: `ANTHROPIC_API_KEY`  Value: `sk-ant-...`
+
+6. Push and HF builds automatically:
+```bash
+git add -A
+git commit -m "deploy: itsm-triage-agent"
+git push
+```
+
+The Space URL will be: `https://huggingface.co/spaces/YOUR_HF_USERNAME/itsm-triage-agent`
+
+---
+
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for the full milestone breakdown including upcoming work:
