@@ -322,7 +322,6 @@ async def _run_baseline(text: str) -> TriageResponse:
 
     try:
         from models.baseline.predict import predict as bl_predict
-        from models.baseline.prompt import DEFAULT_BASELINE_MODEL
 
         result = bl_predict(text)
 

@@ -67,7 +67,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # ─── IMPORTS (after path fix) ─────────────────────────────────────────────────
 from dotenv import load_dotenv
-from loguru import logger
 
 from models.baseline.predict import predict
 from models.baseline.prompt import DEFAULT_BASELINE_MODEL
@@ -174,13 +173,13 @@ def print_result(ticket: dict, result, index: int, total: int) -> None:
         match_cat = "✓" if result.category == ticket["category"] else "✗"
         match_pri = "✓" if result.priority == ticket["priority"] else "✗"
 
-        print(f"  Prediction:")
+        print("  Prediction:")
         print(f"    Category:   {result.category}  {match_cat}  (actual: {ticket['category']})")
         print(f"    Priority:   {result.priority}  {match_pri}  (actual: {ticket['priority']})")
         print(f"    Reasoning:  {result.reasoning}")
         print(f"    Next Action:{result.next_action}")
         print()
-        print(f"  Stats:")
+        print("  Stats:")
         print(f"    Model:      {result.model}")
         print(f"    Tokens:     {result.input_tokens} in / {result.output_tokens} out")
         print(f"    Cost:       ${result.cost_usd:.6f}")
@@ -258,7 +257,7 @@ def main():
     # ── HEADER ───────────────────────────────────────────────────────────────
     print()
     print_separator("═")
-    print(f"  M1 Baseline Smoke Test")
+    print("  M1 Baseline Smoke Test")
     print(f"  Model:   {args.model}")
     print(f"  Tickets: {len(tickets)} (from {data_path.name})")
     print_separator("═")
@@ -286,7 +285,7 @@ def main():
 
     # ── SUMMARY ──────────────────────────────────────────────────────────────
     print_separator("═")
-    print(f"  SUMMARY")
+    print("  SUMMARY")
     print_separator("═")
     print(f"  Passed:     {successes}/{len(tickets)}")
     print(f"  Total cost: ${total_cost:.6f}")

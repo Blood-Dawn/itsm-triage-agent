@@ -61,7 +61,6 @@ import random
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -85,9 +84,7 @@ load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=True)
 
 from data.schema.ticket import Category, Priority
 from eval.metrics import (
-    ClassificationMetrics,
     EvalResult,
-    LatencyStats,
     compute_classification_metrics,
     compute_latency_stats,
 )

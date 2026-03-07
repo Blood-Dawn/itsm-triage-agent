@@ -52,7 +52,7 @@ import argparse
 import json
 import random
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import Counter
 
 # ─── THIRD-PARTY IMPORTS ─────────────────────────────────────────────────────
@@ -587,7 +587,7 @@ def generate_dataset(
     console.print(pri_table)
 
     # File paths
-    console.print(f"\n[dim]Files written:[/dim]")
+    console.print("\n[dim]Files written:[/dim]")
     for f in sorted(out.glob("*.jsonl")):
         size_kb = f.stat().st_size / 1024
         console.print(f"  [dim]{f}[/dim]  ({size_kb:.1f} KB)")

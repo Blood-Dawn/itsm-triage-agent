@@ -81,7 +81,7 @@ def print_result(ticket: dict, result: FinetuneResult, idx: int, total: int):
         match_cat = "✓" if result.category == ticket["category"] else "✗"
         match_pri = "✓" if result.priority == ticket["priority"] else "✗"
 
-        print(f"  Prediction:")
+        print("  Prediction:")
         print(f"    Category:    {result.category}  {match_cat}  "
               f"(actual: {ticket['category']})  confidence: {result.cat_confidence:.1%}")
         print(f"    Priority:    {result.priority}  {match_pri}  "
@@ -127,7 +127,7 @@ def main():
     # ── HEADER ────────────────────────────────────────────────────────────────
     print()
     print_sep("═")
-    print(f"  M3 Fine-Tuned Model Smoke Test")
+    print("  M3 Fine-Tuned Model Smoke Test")
     print(f"  Adapter: {adapter_dir.parent.name}/{adapter_dir.name}")
     print(f"  Tickets: {len(tickets)} (from {data_path.name})")
     print_sep("═")
@@ -158,9 +158,9 @@ def main():
     succeeded = sum(r.success for r in results)
 
     print_sep("═")
-    print(f"  SUMMARY")
+    print("  SUMMARY")
     print_sep("═")
-    print(f"  API calls:        0  (local model — no cost)")
+    print("  API calls:        0  (local model — no cost)")
     print(f"  Succeeded:        {succeeded}/{n}")
     if succeeded > 0:
         avg_lat = total_latency / succeeded

@@ -94,7 +94,7 @@ jobs:
         run: |
           ruff check . \
             --select E,F,W \
-            --ignore E501,W291,W293 \
+            --ignore E501,W291,W293,E402 \
             --exclude ".git,__pycache__,*.egg-info,venv,.venv,node_modules"
 
   # ── Job 2: Test ─────────────────────────────────────────────────────────────

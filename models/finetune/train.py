@@ -52,7 +52,6 @@ HOW HuggingFace TRAINER WORKS (the big picture):
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -67,7 +66,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from models.finetune.dataset import load_splits, load_tokenizer
-from models.finetune.model import DualHeadOutput, build_model
+from models.finetune.model import build_model
 
 
 # ─── CUSTOM TRAINER ───────────────────────────────────────────────────────────

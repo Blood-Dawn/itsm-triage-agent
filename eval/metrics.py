@@ -55,7 +55,6 @@ Cost (baseline only):
 
 from __future__ import annotations
 
-import json
 import numpy as np
 from dataclasses import dataclass, field, asdict
 from typing import Optional
