@@ -153,9 +153,11 @@ def call_triage(server_url: str, text: str, backend: str) -> dict | None:
     """
     POST /triage and return the response dict, or None on error.
     Raises requests.exceptions.RequestException on network failure.
+    Timeout: 90s for baseline (Anthropic API), 15s for finetuned (local model).
     """
     payload = {"text": text, "backend": backend}
-    resp = requests.post(f"{server_url}/triage", json=payload, timeout=30)
+    timeout = 90 if backend == "baseline" else 15
+    resp = requests.post(f"{server_url}/triage", json=payload, timeout=timeout)
     resp.raise_for_status()
     return resp.json()
 
@@ -366,20 +368,37 @@ with tab_single:
             if len(ticket_text) < 10:
                 st.warning("Please enter at least a subject or body before triaging.")
             else:
-                with st.spinner(f"Running {backend_choice} backend..."):
+                spinner_msg = (
+                    "Calling Claude Haiku via Anthropic API — usually 5-15s..."
+                    if backend_choice == "baseline"
+                    else "Running finetuned DistilBERT model — usually <1s..."
+                )
+                with st.spinner(spinner_msg):
                     try:
                         result = call_triage(server_url, ticket_text, backend_choice)
                         if result and result.get("success"):
                             st.session_state["last_result"] = result
                         elif result:
-                            st.error(f"Prediction failed: {result.get('error', 'unknown error')}")
+                            err = result.get("error", "unknown error")
+                            if "529" in str(err) or "overloaded" in str(err).lower():
+                                st.warning(
+                                    "Anthropic API is temporarily overloaded (529).  \n"
+                                    "This is Anthropic's servers being busy — not your code.  \n"
+                                    "Wait 30 seconds and try again."
+                                )
+                            else:
+                                st.error(f"Prediction failed: {err}")
                     except requests.exceptions.ConnectionError:
                         st.error(
                             f"Cannot connect to server at {server_url}.  \n"
-                            "Run: `uvicorn api.app:app --reload`"
+                            "Run: `python -m uvicorn api.app:app --reload`"
                         )
                     except requests.exceptions.Timeout:
-                        st.error("Request timed out. The baseline backend can take up to 30s.")
+                        st.error(
+                            "Request timed out after 90s.  \n"
+                            "Check that `ANTHROPIC_API_KEY` is set in your `.env` file "
+                            "and that you have an active internet connection."
+                        )
                     except requests.exceptions.HTTPError as e:
                         st.error(f"Server error: {e}")
 
@@ -439,7 +458,7 @@ with tab_compare:
             ft_result = None
             bl_result = None
 
-            with st.spinner("Running both backends in parallel..."):
+            with st.spinner("Running finetuned first, then baseline (Anthropic API — up to 90s)..."):
                 # Run finetuned
                 t0 = time.perf_counter()
                 try:
@@ -451,7 +470,10 @@ with tab_compare:
                 try:
                     bl_result = call_triage(server_url, ticket_text, "baseline")
                 except requests.exceptions.Timeout:
-                    st.warning("Baseline timed out — it can take up to 30s.")
+                    st.warning(
+                        "Baseline timed out after 90s.  \n"
+                        "Check that `ANTHROPIC_API_KEY` is set in your `.env` file."
+                    )
                 except Exception as e:
                     st.error(f"Baseline error: {e}")
 

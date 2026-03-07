@@ -462,7 +462,7 @@ def predict(
     # Tradeoff: slightly slower first call because client setup happens then.
     # For a batch eval job, this is negligible.
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
 
     # ── RETRY LOOP ────────────────────────────────────────────────────────
     #
