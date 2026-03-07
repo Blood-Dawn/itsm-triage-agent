@@ -100,3 +100,38 @@ services:
           memory: 1G
         reservations:
           memory: 512M
+
+  # ── Streamlit UI service (M8) ─────────────────────────────────────────────────
+  ui:
+    # Uses a lightweight image — no torch, no model weights.
+    # The UI is a pure HTTP client that talks to the api service.
+    image: python:3.11-slim
+    container_name: itsm-triage-ui
+
+    # Install streamlit + requests, then launch the app.
+    # We mount the source directory so code changes reflect without rebuild.
+    command: >
+      bash -c "pip install streamlit>=1.35.0 requests>=2.31.0 -q &&
+               streamlit run app/streamlit_app.py
+               --server.port 8501
+               --server.address 0.0.0.0
+               --server.headless true"
+
+    working_dir: /app
+    volumes:
+      - .:/app
+
+    ports:
+      - "8501:8501"
+
+    # Point the UI at the api service using Docker's internal DNS.
+    # The Streamlit app reads this env var as the default server URL.
+    environment:
+      - API_URL=http://api:8000
+
+    # Don't start the UI until the API is healthy.
+    depends_on:
+      api:
+        condition: service_healthy
+
+    restart: unless-stopped
