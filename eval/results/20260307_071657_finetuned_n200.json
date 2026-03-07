@@ -1,0 +1,53 @@
+{
+  "timestamp": "2026-03-07T07:16:57.592937",
+  "n_tickets": 200,
+  "seed": 42,
+  "results": [
+    {
+      "backend": "finetuned",
+      "n_total": 200,
+      "n_success": 200,
+      "n_failed": 0,
+      "category": {
+        "accuracy": 1.0,
+        "f1_macro": 1.0,
+        "f1_weighted": 1.0,
+        "per_class_f1": {
+          "hardware": 1.0,
+          "software": 1.0,
+          "network": 1.0,
+          "security": 1.0,
+          "access": 1.0,
+          "email": 1.0,
+          "printer": 1.0,
+          "other": 1.0
+        },
+        "n_total": 200,
+        "n_correct": 200,
+        "report": "              precision    recall  f1-score   support\n\n    hardware      1.000     1.000     1.000        26\n    software      1.000     1.000     1.000        24\n     network      1.000     1.000     1.000        30\n    security      1.000     1.000     1.000        30\n      access      1.000     1.000     1.000        24\n       email      1.000     1.000     1.000        24\n     printer      1.000     1.000     1.000        23\n       other      1.000     1.000     1.000        19\n\n    accuracy                          1.000       200\n   macro avg      1.000     1.000     1.000       200\nweighted avg      1.000     1.000     1.000       200\n"
+      },
+      "priority": {
+        "accuracy": 0.535,
+        "f1_macro": 0.1743,
+        "f1_weighted": 0.3729,
+        "per_class_f1": {
+          "P1": 0.0,
+          "P2": 0.0,
+          "P3": 0.6971,
+          "P4": 0.0
+        },
+        "n_total": 200,
+        "n_correct": 107,
+        "report": "              precision    recall  f1-score   support\n\n          P1      0.000     0.000     0.000        11\n          P2      0.000     0.000     0.000        38\n          P3      0.535     1.000     0.697       107\n          P4      0.000     0.000     0.000        44\n\n    accuracy                          0.535       200\n   macro avg      0.134     0.250     0.174       200\nweighted avg      0.286     0.535     0.373       200\n"
+      },
+      "latency": {
+        "mean_ms": 21.2,
+        "p50_ms": 21.2,
+        "p95_ms": 23.6,
+        "p99_ms": 24.4
+      },
+      "total_cost_usd": null,
+      "avg_cost_usd": null
+    }
+  ]
+}

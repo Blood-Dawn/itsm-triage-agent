@@ -1,0 +1,205 @@
+# .github/workflows/ci.yml
+# ─────────────────────────
+# GitHub Actions CI pipeline for the ITSM Triage Agent.
+#
+# WHAT THIS DOES:
+#
+#   Every time you push to any branch or open a pull request against main,
+#   GitHub automatically runs three jobs:
+#
+#     1. lint    — ruff checks code style and catches obvious errors fast (~10s)
+#     2. test    — pytest runs the unit tests against eval/metrics.py (~30s)
+#     3. docker  — builds the Docker image to verify the Dockerfile is valid (~3 min)
+#
+# WHY CI AT ALL?
+#
+#   CI (Continuous Integration) is the practice of automatically running
+#   checks every time code changes. The alternative — manually running
+#   tests before every commit — sounds fine until you're tired at midnight
+#   and push a broken Dockerfile that breaks the demo during an interview.
+#
+#   GitHub Actions is free for public repos (unlimited minutes) and free
+#   for private repos up to 2,000 minutes/month. For a portfolio project
+#   it effectively costs nothing.
+#
+# WHY THESE THREE JOBS SPECIFICALLY?
+#
+#   lint:   Catches style issues and import errors without loading torch.
+#           Runs in ~10 seconds. It's the fastest guard against obvious mistakes.
+#
+#   test:   Runs pytest on eval/metrics.py — the only module that doesn't
+#           need torch, transformers, or an API key. This lets us run real
+#           assertions in CI without a GPU or secrets.
+#
+#           The rest of the pipeline (M1, M3, M4) requires torch and/or
+#           ANTHROPIC_API_KEY — too expensive or complex for CI. Testing
+#           the metrics logic is the right CI boundary.
+#
+#   docker: Builds the full image to confirm the Dockerfile is valid and
+#           all COPY commands find the expected files. We don't push to
+#           a registry — just verify the build succeeds.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]          # Run on every push to any branch
+  pull_request:
+    branches: [main, master]  # Run on PRs targeting main
+
+# Cancel in-progress runs for the same branch when a new push arrives.
+# This prevents a slow docker build from blocking a newer commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── Job 1: Lint ─────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Cache pip downloads so repeated runs skip re-downloading ruff
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-lint-${{ hashFiles('requirements.txt') }}
+
+      - name: Install ruff
+        run: pip install ruff
+
+      # WHY ruff AND NOT flake8 OR pylint?
+      #
+      # ruff is a Rust-based Python linter that is 10-100x faster than
+      # flake8. It also covers most of pylint's rules and replaces
+      # isort (import sorting). For a portfolio project, ruff is the
+      # modern, opinionated choice that recruiters and engineers recognize.
+      #
+      # --select E,F,W — check for pycodestyle errors (E), pyflakes errors
+      #   (undefined names, unused imports) (F), and warnings (W).
+      # --ignore E501  — don't enforce line length (our comments are long
+      #   on purpose for educational value).
+      - name: Run ruff
+        run: |
+          ruff check . \
+            --select E,F,W \
+            --ignore E501,W291,W293 \
+            --exclude ".git,__pycache__,*.egg-info,venv,.venv,node_modules"
+
+  # ── Job 2: Test ─────────────────────────────────────────────────────────────
+  test:
+    name: Unit Tests (pytest)
+    runs-on: ubuntu-latest
+    # Tests can run in parallel with lint — they're independent
+    needs: []
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-test-${{ hashFiles('requirements.txt') }}
+
+      # Install only the packages tests actually need — NOT torch.
+      # Installing torch would take 3+ minutes and we don't need it
+      # to test eval/metrics.py.
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-cov scikit-learn numpy pydantic
+
+      - name: Run pytest
+        run: |
+          pytest tests/ \
+            --tb=short \
+            --cov=eval \
+            --cov-report=term-missing \
+            -v
+
+      # WHY --cov=eval AND NOT --cov=. ?
+      #
+      # Coverage across the entire project would report 0% for models/
+      # (because we don't test torch code in CI). That would make the
+      # coverage number misleading. We scope it to eval/ where we actually
+      # have runnable tests.
+
+  # ── Job 3: Docker Build ─────────────────────────────────────────────────────
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    # Only run docker build after lint and tests pass — no point building
+    # an image if the code is broken.
+    needs: [lint, test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up Docker Buildx — the modern Docker build backend.
+      # Required for advanced caching and multi-platform builds.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # WHY cache the Docker layers?
+      #
+      # The torch CPU install (~250 MB download) and pip install steps
+      # are the slowest parts of the Docker build. Docker layer caching
+      # lets GitHub Actions skip re-running unchanged layers between builds.
+      # A cold build takes ~8 minutes. A warm cached build takes ~1 minute.
+      #
+      # We use GitHub Actions cache (type=gha) because it's built into
+      # the Actions runner and requires no external registry.
+      - name: Build Docker image (with layer cache)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false          # Don't push to a registry — just verify the build
+          tags: itsm-triage-agent:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Smoke test: start the container and poll /health until it responds.
+      # This confirms the model loads and the server starts correctly.
+      #
+      # We run without ANTHROPIC_API_KEY on purpose — the server should start
+      # in "degraded" mode (finetuned only) and /health should still return 200.
+      - name: Smoke test the container
+        run: |
+          docker run -d \
+            --name itsm-ci-test \
+            -p 8000:8000 \
+            -e ADAPTER_DIR=/app/models/finetuned/distilbert-lora/adapter \
+            itsm-triage-agent:ci
+
+          echo "Waiting for server to start (model load takes ~60s)..."
+          for i in $(seq 1 24); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Server is up after $((i * 5))s"
+              curl -s http://localhost:8000/health | python3 -m json.tool
+              exit 0
+            fi
+            echo "  attempt $i/24 — waiting 5s..."
+            sleep 5
+          done
+
+          echo "ERROR: Server did not start within 120 seconds"
+          docker logs itsm-ci-test
+          exit 1

@@ -1,0 +1,102 @@
+# docker-compose.yml
+# ───────────────────
+# Orchestrates the ITSM Triage Agent API container for local development
+# and simple single-host deployments.
+#
+# HOW TO USE:
+#
+#   # Start (build if needed, then run)
+#   docker-compose up
+#
+#   # Start in background
+#   docker-compose up -d
+#
+#   # Rebuild the image from scratch (after changing code or dependencies)
+#   docker-compose up --build
+#
+#   # Stop and remove containers
+#   docker-compose down
+#
+# WHY docker-compose INSTEAD OF JUST docker run?
+#
+#   A plain docker run command for this container looks like:
+#
+#     docker run \
+#       -p 8000:8000 \
+#       -e ANTHROPIC_API_KEY=sk-ant-... \
+#       -e ADAPTER_DIR=/app/models/finetuned/distilbert-lora/adapter \
+#       --name itsm-api \
+#       itsm-triage-agent
+#
+#   That's easy to forget and error-prone. docker-compose captures the
+#   same configuration in a file that lives in the repo, is version-
+#   controlled, and can be shared with anyone on the team.
+#
+#   It also makes adding a second service (a database, Redis cache, etc.)
+#   trivial in the future — just add another block under `services:`.
+
+services:
+
+  # ── API service ──────────────────────────────────────────────────────────────
+  api:
+    # Build from the Dockerfile in the current directory
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Give the running container a predictable name for docker exec / logs
+    container_name: itsm-triage-api
+
+    # Map host port 8000 to container port 8000.
+    # Format: "HOST:CONTAINER"
+    # After running, the API is reachable at http://localhost:8000
+    ports:
+      - "8000:8000"
+
+    # Load environment variables from .env (same file the server reads locally).
+    #
+    # WHY env_file AND NOT hardcoding in environment:?
+    #
+    # We never want secrets (API keys) committed to version control.
+    # .env is listed in .gitignore — it stays on your machine.
+    # docker-compose reads it at runtime and injects the values as
+    # environment variables inside the container without exposing them
+    # in this file or in the image.
+    env_file:
+      - .env
+
+    # Environment variables that override or supplement .env values.
+    # These are safe to commit because they contain no secrets.
+    environment:
+      # Tell the API where to find the fine-tuned model adapter.
+      # This matches the path we COPYed into the image in the Dockerfile.
+      - ADAPTER_DIR=/app/models/finetuned/distilbert-lora/adapter
+
+    # Restart policy: automatically restart the container if it crashes.
+    #
+    # unless-stopped: restart on failure or system reboot, but NOT if
+    # you explicitly ran `docker-compose down`. This is the most sensible
+    # default for a development/staging server.
+    restart: unless-stopped
+
+    # Health check mirrors the HEALTHCHECK in the Dockerfile.
+    # docker-compose uses this to decide when the container is "healthy"
+    # before reporting it as ready.
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s   # Give the model time to load on first start
+
+    # Resource limits — good practice even locally to catch memory leaks early.
+    # DistilBERT + LoRA adapter needs ~500 MB RAM on CPU.
+    # 1 CPU is more than enough for a single-worker demo server.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          memory: 512M

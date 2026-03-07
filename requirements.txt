@@ -1,0 +1,31 @@
+# requirements.txt
+# Install with: pip install -r requirements.txt
+#
+# Grouped by pipeline stage so it's easy to see what each section is for.
+
+# ── Data / Schema ─────────────────────────────────────────────────────────────
+pydantic>=2.0
+faker>=24.0
+
+# ── LLM Baseline (M1) ─────────────────────────────────────────────────────────
+anthropic>=0.25.0
+python-dotenv>=1.0
+
+# ── Fine-tuning (M2 / M3) ─────────────────────────────────────────────────────
+torch>=2.2.0
+transformers>=4.40.0
+peft>=0.10.0
+datasets>=2.18.0
+accelerate>=0.29.0
+
+# ── API (M4) ──────────────────────────────────────────────────────────────────
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+
+# ── Evaluation (M5) ───────────────────────────────────────────────────────────
+scikit-learn>=1.4.0
+numpy>=1.26.0
+
+# ── Shared utilities ──────────────────────────────────────────────────────────
+loguru>=0.7.0
+rich>=13.0.0

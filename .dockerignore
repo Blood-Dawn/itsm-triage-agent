@@ -1,0 +1,72 @@
+# .dockerignore
+# ─────────────
+# Tells Docker which files to EXCLUDE from the build context.
+#
+# WHY THIS MATTERS:
+#
+# When you run "docker build .", Docker packages every file in the
+# current directory into a "build context" and sends it to the Docker
+# daemon before processing the Dockerfile. Without a .dockerignore,
+# this project would include:
+#   - ~700 MB of training checkpoints (checkpoint-500, checkpoint-750)
+#   - ~50 MB of Python __pycache__ directories
+#   - The .git directory (~5 MB of object history)
+#   - Your .env file (SECURITY RISK — this has your API key)
+#
+# A tight .dockerignore keeps the build context small (fast uploads
+# to remote Docker daemons) and, crucially, keeps secrets out of the image.
+
+# ── Secrets — NEVER bake these into a Docker image ───────────────────────────
+.env
+.env.*
+!.env.example    # .env.example is safe to include (it has no real values)
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git
+.gitignore
+
+# ── Python cache — these get regenerated inside the container anyway ──────────
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── Training checkpoints — large and not needed at inference time ─────────────
+# The adapter/ directory IS included (see Dockerfile COPY command).
+# The checkpoint directories are NOT — each is ~400 MB.
+models/finetuned/distilbert-lora/checkpoint-*/
+
+# ── Raw training data — not needed to run the API ────────────────────────────
+data/raw/
+data/generator/
+
+# ── Evaluation results — generated outputs, not source ───────────────────────
+eval/results/
+
+# ── Test files — not needed in production image ──────────────────────────────
+tests/
+
+# ── IDE and OS files ──────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+debug.log
+
+# ── Node (for the report generator script — not part of the API) ─────────────
+node_modules/
+generate_report.js
