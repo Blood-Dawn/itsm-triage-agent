@@ -110,94 +110,86 @@ from data.generator.templates import TEMPLATES, _validate_templates
 #                to compute meaningful F1 scores. The more training data,
 #                the better the fine-tuned model.
 
-DEFAULT_N = 2000
+DEFAULT_N = 10000
 DEFAULT_SEED = 42
 SPLIT_RATIOS = {"train": 0.80, "val": 0.10, "test": 0.10}
 
 
 # ─── CORE GENERATION LOGIC ──────────────────────────────────────────────────
 
-def generate_ticket_text(category: str, fake: Faker) -> tuple[str, str]:
+def generate_ticket_text(category: str, priority: str, fake: Faker) -> tuple[str, str]:
     """
-    Generate a realistic ticket text and next_action for a given category.
+    Generate a realistic ticket text and next_action for a given category AND priority.
 
-    WHY RETURN A TUPLE OF (text, next_action)?
+    KEY CHANGE FROM v1:
+        In v1, priority was assigned randomly and was completely decoupled from
+        the ticket text. A P1 "laptop won't turn on" and a P4 "laptop won't turn on"
+        had IDENTICAL text — the model could not learn the difference.
 
-    Because text and next_action come from the SAME category's templates.
-    If we generated them separately, we might accidentally pair a hardware
-    symptom with a network next_action. Generating them together from the
-    same template entry ensures consistency.
+        In v2, we inject a PRIORITY-SPECIFIC context sentence into every ticket.
+        P1 tickets contain phrases like "production is completely down" and "entire
+        team cannot work". P4 tickets contain phrases like "no rush" and "whenever
+        IT has bandwidth". This gives the model learnable text signals to correlate
+        with priority labels.
 
     HOW THE TEXT IS CONSTRUCTED:
 
-    A real helpdesk ticket typically has:
-      Subject line: "Laptop won't turn on"
-      Description:  "I came in this morning and my laptop won't power on. I've tried different outlets. The light doesn't come on at all. I need this for my 10 AM meeting."
-
-    We simulate this by combining:
-      1. A subject + symptom → the title/problem statement
-      2. A detail → the user's additional context
-      3. A Faker sentence → more natural variation so tickets aren't all exactly 3 sentences long
+        title:            "{subject}: {symptom}"  (short summary line)
+        urgency_context:  priority-specific sentence injected into the body
+        optional detail:  general context (added ~50% of the time for variety)
+        faker sentences:  0-2 random sentences for natural length variation
 
     Parameters
     ----------
     category : str
         One of the 8 category values ("hardware", "software", etc.)
+    priority : str
+        One of "P1", "P2", "P3", "P4" — controls which context and action pool
+        is selected, ensuring text correlates with the assigned priority label.
     fake : Faker
         A seeded Faker instance for reproducible random data.
 
     Returns
     -------
     tuple[str, str]
-        (ticket_text, next_action)
+        (ticket_text, next_action) where next_action is priority-appropriate.
     """
     template = TEMPLATES[category]
 
-    # random.choice() picks one item from a list uniformly at random.
-    # Because we seeded random at the start of main(), every call to
-    # random.choice() is deterministic - same seed, same sequence.
     subject = random.choice(template["subjects"])
     symptom = random.choice(template["symptoms"])
-    detail = random.choice(template["details"])
-    action = random.choice(template["next_actions"])
+
+    # Select the priority-specific context and action.
+    # e.g. priority="P1" → template["p1_contexts"] and template["p1_actions"]
+    priority_key = priority.lower()   # "P1" → "p1"
+    urgency_context = random.choice(template[f"{priority_key}_contexts"])
+    action          = random.choice(template[f"{priority_key}_actions"])
 
     # ── BUILD THE TICKET TEXT ────────────────────────────────────────────
     #
-    # We concatenate multiple pieces to create variety:
+    # Structure mirrors a real helpdesk ticket:
     #
-    #   title:   "{subject} : {symptom}" (like a real ticket subject line)
-    #   body:    "{detail} {faker_sentence}" (user's description)
-    #
-    # fake.name() and fake.company() add realistic but random proper nouns
-    # so tickets don't all sound identical. This variation is important
-    # because the model needs to learn that "laptop won't turn on" and
-    # "workstation won't turn on" are both HARDWARE, despite different
-    # wording.
-    #
-    # WHY f-STRINGS?
-    #
-    # f-strings (f"...{variable}...") are Python's modern string
-    # formatting. They're faster than .format() and more readable than
-    # concatenation ("string " + variable + " string"). Use them
-    # everywhere unless you're targeting Python < 3.6 (which you're not).
+    #   Line 1 (title):  "VPN connection: drops every few minutes"
+    #   Body sentence 1: "Hi, my VPN connection is drops every few minutes."
+    #   Body sentence 2: [urgency_context — the priority signal for the model]
+    #   Body sentence 3: [optional general detail for variety]
+    #   Body sentence 4+: [0-2 Faker sentences for natural length variation]
 
-    title = f"{subject} : {symptom}"
+    title = f"{subject}: {symptom}"
 
-    # Build a 2-4 sentence description for natural variation
     sentences = [
         f"Hi, my {subject} is {symptom}.",
-        detail,
+        urgency_context,   # <— this is the priority signal
     ]
 
-    # Add 1-2 more sentences from Faker for length variation.
-    # random.randint(1, 2) gives us either 1 or 2 additional sentences.
-    # This means ticket descriptions range from 3-4 sentences, which
-    # mirrors real helpdesk tickets (they're usually short and specific).
-    for _ in range(random.randint(1, 2)):
-        # fake.sentence() generates a random but grammatically correct
-        # English sentence. It won't be domain-specific, but it adds
-        # natural noise - real tickets also contain irrelevant context
-        # ("I just started this job last week" in a printer ticket).
+    # Add a general detail sentence ~50% of the time for variety.
+    # Without this, every ticket would have an identical two-sentence structure.
+    if random.random() < 0.5:
+        sentences.append(random.choice(template["details"]))
+
+    # Add 0-2 Faker sentences for natural length variation.
+    # Faker sentences add noise that mirrors real ticket padding.
+    for _ in range(random.randint(0, 2)):
         sentences.append(fake.sentence())
 
     body = " ".join(sentences)
@@ -460,8 +452,8 @@ def generate_dataset(
         # Weighted priority selection
         pri = assign_priority(cat.value)
 
-        # Generate text and action from templates
-        text, action = generate_ticket_text(cat.value, fake)
+        # Generate text and action from templates (priority-correlated)
+        text, action = generate_ticket_text(cat.value, pri.value, fake)
 
         # Generate a realistic timestamp
         ts = generate_timestamp(fake)
@@ -592,7 +584,11 @@ def generate_dataset(
         size_kb = f.stat().st_size / 1024
         console.print(f"  [dim]{f}[/dim]  ({size_kb:.1f} KB)")
 
-    console.print(f"\n[bold]Reproduce with:[/bold]  python -m data.generator.gen --n {n} --seed {seed}\n")
+    console.print(
+        f"\n[bold]Reproduce with:[/bold]  "
+        f"python -m data.generator.gen --n {n} --seed {seed}\n"
+        f"[dim]Priority labels are now correlated with ticket text (v2 templates).[/dim]\n"
+    )
 
     return out
 

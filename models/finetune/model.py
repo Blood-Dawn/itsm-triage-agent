@@ -377,12 +377,47 @@ class DualHeadDistilBERT(nn.Module):
             #
             #   Both tasks have roughly the same difficulty and importance.
             #   If one task dominated (e.g., 10× loss), the model would
-            #   neglect the other. Equal weighting is the right default;
-            #   you could experiment with e.g. 0.6*cat + 0.4*pri if you
-            #   care more about category accuracy.
+            #   neglect the other. Equal weighting is the right default.
 
             cat_loss = F.cross_entropy(cat_logits, category_labels)
-            pri_loss = F.cross_entropy(pri_logits, priority_labels)
+
+            # ── PRIORITY LOSS WITH CLASS WEIGHTS ─────────────────────────────
+            #
+            # WHY CLASS WEIGHTS FOR PRIORITY?
+            #
+            # The training data has a skewed priority distribution:
+            #   P1=5%,  P2=20%,  P3=50%,  P4=25%
+            #
+            # Without class weights, the model minimises total loss by
+            # always predicting P3 (the majority class). It gets 50% accuracy
+            # for "free" while never learning to detect P1 or P2.
+            #
+            # Class weights make misclassifying a rare P1 ticket much MORE
+            # costly than misclassifying a common P3 ticket, forcing the model
+            # to actually learn the minority classes.
+            #
+            # WEIGHT CALCULATION (inverse-frequency):
+            #   weight[i] = total / (n_classes × count[i])
+            #   P1: 1.0 / (4 × 0.05) = 5.0
+            #   P2: 1.0 / (4 × 0.20) = 1.25
+            #   P3: 1.0 / (4 × 0.50) = 0.5
+            #   P4: 1.0 / (4 × 0.25) = 1.0
+            #
+            # INDEX ORDER must match the PRIORITY_TO_ID map in dataset.py,
+            # which is derived from the Priority enum definition order:
+            #   P1 → index 0,  P2 → index 1,  P3 → index 2,  P4 → index 3
+            #
+            # We move the tensor to the same device as the logits so this
+            # works on CPU, CUDA, and MPS (Apple Silicon) without changes.
+
+            priority_class_weights = torch.tensor(
+                [5.0, 1.25, 0.5, 1.0],
+                dtype=torch.float,
+                device=pri_logits.device,
+            )
+            pri_loss = F.cross_entropy(
+                pri_logits, priority_labels, weight=priority_class_weights
+            )
             loss = cat_loss + pri_loss
 
         return DualHeadOutput(
