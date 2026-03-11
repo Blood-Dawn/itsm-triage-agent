@@ -223,7 +223,7 @@ async def triage(req: TriageRequest) -> TriageResponse:
     if req.backend == Backend.FINETUNED:
         return await _run_finetuned(req.text)
     else:
-        return await _run_baseline(req.text)
+        return await _run_baseline(req.text, api_key=req.api_key, provider=req.provider)
 
 
 # ─── BACKEND HANDLERS ─────────────────────────────────────────────────────────
@@ -296,41 +296,57 @@ async def _run_finetuned(text: str) -> TriageResponse:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _run_baseline(text: str) -> TriageResponse:
+async def _run_baseline(
+    text: str,
+    api_key: str | None = None,
+    provider: str = "anthropic",
+) -> TriageResponse:
     """
-    Run inference using the Claude LLM baseline (M1).
+    Run inference using an LLM baseline (Anthropic Claude or OpenAI GPT).
 
-    WHY raise 503 instead of 500 when the key is missing?
+    Provider routing
+    ----------------
+    provider="anthropic" → calls models/baseline/predict.py (Claude Haiku)
+    provider="openai"    → calls models/baseline/openai_predict.py (GPT-4o-mini)
 
-        HTTP 503 = Service Unavailable (temporary, may fix itself)
-        HTTP 500 = Internal Server Error (something is broken)
-        HTTP 401 = Unauthorized (wrong key)
+    Key resolution order
+    --------------------
+    1. api_key argument (user-supplied via request body from the Streamlit UI)
+    2. ANTHROPIC_API_KEY environment variable (set via .env or HF Spaces secret)
 
-        Missing key is a configuration problem, not a code bug.
-        503 is the right status because the baseline will work fine
-        once the key is added. A load balancer or retry logic should
-        treat 503 differently than 500.
+    If neither is set, returns HTTP 503 with a helpful error message.
+
+    WHY 503 instead of 500 when key is missing?
+        503 = Service Unavailable (can be fixed by adding a key)
+        500 = Internal Server Error (a code bug)
+        A missing config value is not a code bug — it's a deployment issue.
     """
-    if not ANTHROPIC_API_KEY:
+    effective_key = api_key or ANTHROPIC_API_KEY
+
+    if not effective_key:
         raise HTTPException(
             status_code=503,
             detail=(
-                "Baseline backend unavailable: ANTHROPIC_API_KEY not set. "
-                "Add it to your .env file."
+                "Baseline backend unavailable: no API key provided. "
+                "Pass 'api_key' in the request body or set ANTHROPIC_API_KEY "
+                "in your environment."
             ),
         )
 
     try:
-        from models.baseline.predict import predict as bl_predict
-
-        result = bl_predict(text)
+        if provider == "openai":
+            from models.baseline.openai_predict import predict as oai_predict
+            result = oai_predict(text, api_key=effective_key)
+        else:
+            from models.baseline.predict import predict as bl_predict
+            result = bl_predict(text, api_key=effective_key)
 
         if not result.success:
             return TriageResponse(
                 category="other",
                 priority="P3",
                 next_action="",
-                backend=Backend.BASELINE.value,
+                backend=f"baseline/{provider}",
                 latency_ms=result.latency_ms,
                 success=False,
                 error=result.error,
@@ -340,7 +356,7 @@ async def _run_baseline(text: str) -> TriageResponse:
             category=result.category,
             priority=result.priority,
             next_action=result.next_action,
-            backend=Backend.BASELINE.value,
+            backend=f"baseline/{provider}",
             latency_ms=result.latency_ms,
             success=True,
             reasoning=result.reasoning,

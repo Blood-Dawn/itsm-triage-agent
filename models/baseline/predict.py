@@ -381,6 +381,7 @@ def predict(
     ticket_text: str,
     model: str = DEFAULT_BASELINE_MODEL,
     max_retries: int = 3,
+    api_key: Optional[str] = None,
 ) -> TriageResult:
     """
     Classify a single ITSM ticket using zero-shot Claude API inference.
@@ -430,11 +431,12 @@ def predict(
     # This is called "fail fast" — surface errors as early as possible
     # with the most informative message possible.
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
+    # Key resolution: caller-supplied > environment variable
+    resolved_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+    if not resolved_key:
         logger.error(
             "ANTHROPIC_API_KEY not set. "
-            "Add it to your .env file: ANTHROPIC_API_KEY=sk-ant-..."
+            "Pass api_key= or add it to your .env file: ANTHROPIC_API_KEY=sk-ant-..."
         )
         return TriageResult(
             category="other", priority="P3",
@@ -443,6 +445,7 @@ def predict(
             cost_usd=0.0, latency_ms=0,
             success=False, error="ANTHROPIC_API_KEY not set"
         )
+    api_key = resolved_key
 
     # ── BUILD CLIENT ──────────────────────────────────────────────────────
     #

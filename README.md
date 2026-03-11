@@ -2,13 +2,44 @@
 
 An end-to-end LLM-powered IT ticket triage pipeline. Given a ticket subject and body,
 the system classifies it into one of 8 categories and assigns a priority level using
-either a fine-tuned DistilBERT model (fast, free, offline) or a Claude Haiku LLM
-baseline (slower, paid, zero-shot).
+either a fine-tuned DistilBERT model (fast, free, offline) or an LLM baseline
+(Claude Haiku or GPT-4o-mini).
 
 Built as a portfolio project by **Kheiven D'Haiti**, B.S. Computer Science, AI Minor —
 Florida Atlantic University (expected Dec 2026).
 
 [![CI](https://github.com/Blood-Dawn/itsm-triage-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Blood-Dawn/itsm-triage-agent/actions/workflows/ci.yml)
+
+---
+
+## 🚀 Try the Live Demo
+
+**[huggingface.co/spaces/Bloodawn/itsm-triage-agent](https://huggingface.co/spaces/Bloodawn/itsm-triage-agent)**
+
+### No setup required for the Finetuned backend
+
+The **Finetuned (DistilBERT + LoRA)** backend runs entirely on HF's free CPU hardware.
+Just open the Space and start triaging tickets — no account, no API key, no cost.
+
+### To use the Baseline (LLM comparison) backend
+
+The baseline calls an external LLM API for a side-by-side comparison. You need your own
+API key — **your key, your cost** (typically $0.001 per call):
+
+**Option A — Anthropic (Claude Haiku):**
+1. Create a free account at [console.anthropic.com](https://console.anthropic.com)
+2. Go to **API Keys** → **Create Key**
+3. Copy your key (starts with `sk-ant-...`)
+4. In the Space sidebar, select **Anthropic (Claude Haiku)** and paste your key
+
+**Option B — OpenAI (GPT-4o-mini):**
+1. Create an account at [platform.openai.com](https://platform.openai.com)
+2. Go to **API keys** → **Create new secret key**
+3. Copy your key (starts with `sk-...`)
+4. In the Space sidebar, select **OpenAI (GPT-4o-mini)** and paste your key
+
+> Your API key is sent directly to the model server for that request only — it is never
+> stored, logged, or shared.
 
 ---
 

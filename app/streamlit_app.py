@@ -38,6 +38,7 @@ FEATURES:
 
 import os
 import time
+from typing import Optional
 
 import requests
 import streamlit as st
@@ -149,13 +150,30 @@ def check_health(server_url: str) -> dict | None:
     return None
 
 
-def call_triage(server_url: str, text: str, backend: str) -> dict | None:
+def call_triage(
+    server_url: str,
+    text: str,
+    backend: str,
+    api_key: Optional[str] = None,
+    provider: str = "anthropic",
+) -> dict | None:
     """
     POST /triage and return the response dict, or None on error.
     Raises requests.exceptions.RequestException on network failure.
-    Timeout: 90s for baseline (Anthropic API), 15s for finetuned (local model).
+    Timeout: 90s for baseline (Anthropic/OpenAI API), 15s for finetuned (local model).
+
+    Parameters
+    ----------
+    api_key : str, optional
+        User-provided API key for the baseline backend.
+        If omitted, the server falls back to its environment variable.
+    provider : str
+        Which LLM provider to use for baseline: "anthropic" or "openai".
     """
     payload = {"text": text, "backend": backend}
+    if api_key:
+        payload["api_key"] = api_key
+        payload["provider"] = provider
     timeout = 90 if backend == "baseline" else 15
     resp = requests.post(f"{server_url}/triage", json=payload, timeout=timeout)
     resp.raise_for_status()
@@ -254,7 +272,53 @@ with st.sidebar:
     st.caption("M8 — Live Demo")
     st.markdown("---")
 
-    # Server URL config
+    # ── API Key Setup ──────────────────────────────────────────────────────────
+    st.subheader("🔑 Baseline API Key")
+    st.markdown(
+        "**Finetuned backend works without any key.** "
+        "To use the baseline (LLM comparison), enter your own API key below."
+    )
+
+    provider_choice = st.selectbox(
+        "LLM Provider",
+        options=["anthropic", "openai"],
+        format_func=lambda x: "Anthropic (Claude Haiku)" if x == "anthropic" else "OpenAI (GPT-4o-mini)",
+        index=0,
+        help="Which LLM provider to use for the baseline backend",
+    )
+
+    api_key_input = st.text_input(
+        "API Key",
+        type="password",
+        placeholder="sk-ant-... or sk-...",
+        help=(
+            "Anthropic: get one at console.anthropic.com\n"
+            "OpenAI: get one at platform.openai.com"
+        ),
+    )
+
+    if api_key_input:
+        prefix_ok = (
+            (provider_choice == "anthropic" and api_key_input.startswith("sk-ant-"))
+            or (provider_choice == "openai" and api_key_input.startswith("sk-"))
+        )
+        if prefix_ok:
+            st.success("Key looks valid — baseline backend enabled")
+        else:
+            st.warning("Key prefix doesn't match selected provider")
+    else:
+        if provider_choice == "anthropic":
+            st.info("Get a free key at [console.anthropic.com](https://console.anthropic.com)")
+        else:
+            st.info("Get a key at [platform.openai.com](https://platform.openai.com/api-keys)")
+
+    # Store in session state so both tabs can read it
+    st.session_state["api_key"] = api_key_input
+    st.session_state["provider"] = provider_choice
+
+    st.markdown("---")
+
+    # ── Server URL config ──────────────────────────────────────────────────────
     st.subheader("Server")
     server_url = st.text_input(
         "API URL",
@@ -289,7 +353,7 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # About
+    # ── About ──────────────────────────────────────────────────────────────────
     st.subheader("About")
     st.markdown(
         "**Kheiven D'Haiti**  \n"
@@ -350,7 +414,7 @@ with tab_single:
             "Backend",
             options=["finetuned", "baseline"],
             horizontal=True,
-            help="finetuned: ~21ms, free | baseline: ~2000ms, uses Anthropic API",
+            help="finetuned: ~21ms, free, no key needed | baseline: ~2000ms, requires API key (see sidebar)",
         )
 
         triage_btn = st.button(
@@ -373,34 +437,45 @@ with tab_single:
                     if backend_choice == "baseline"
                     else "Running finetuned DistilBERT model — usually <1s..."
                 )
-                with st.spinner(spinner_msg):
-                    try:
-                        result = call_triage(server_url, ticket_text, backend_choice)
-                        if result and result.get("success"):
-                            st.session_state["last_result"] = result
-                        elif result:
-                            err = result.get("error", "unknown error")
-                            if "529" in str(err) or "overloaded" in str(err).lower():
-                                st.warning(
-                                    "Anthropic API is temporarily overloaded (529).  \n"
-                                    "This is Anthropic's servers being busy — not your code.  \n"
-                                    "Wait 30 seconds and try again."
-                                )
-                            else:
-                                st.error(f"Prediction failed: {err}")
-                    except requests.exceptions.ConnectionError:
-                        st.error(
-                            f"Cannot connect to server at {server_url}.  \n"
-                            "Run: `python -m uvicorn api.app:app --reload`"
-                        )
-                    except requests.exceptions.Timeout:
-                        st.error(
-                            "Request timed out after 90s.  \n"
-                            "Check that `ANTHROPIC_API_KEY` is set in your `.env` file "
-                            "and that you have an active internet connection."
-                        )
-                    except requests.exceptions.HTTPError as e:
-                        st.error(f"Server error: {e}")
+                # Grab key/provider from sidebar session state
+                _api_key  = st.session_state.get("api_key") or None
+                _provider = st.session_state.get("provider", "anthropic")
+
+                if backend_choice == "baseline" and not _api_key:
+                    st.warning(
+                        "Enter your API key in the sidebar to use the baseline backend.  \n"
+                        "The finetuned backend works without any key."
+                    )
+                else:
+                    with st.spinner(spinner_msg):
+                        try:
+                            result = call_triage(
+                                server_url, ticket_text, backend_choice,
+                                api_key=_api_key, provider=_provider,
+                            )
+                            if result and result.get("success"):
+                                st.session_state["last_result"] = result
+                            elif result:
+                                err = result.get("error", "unknown error")
+                                if "529" in str(err) or "overloaded" in str(err).lower():
+                                    st.warning(
+                                        "API is temporarily overloaded (529).  \n"
+                                        "Wait 30 seconds and try again."
+                                    )
+                                else:
+                                    st.error(f"Prediction failed: {err}")
+                        except requests.exceptions.ConnectionError:
+                            st.error(
+                                f"Cannot connect to server at {server_url}.  \n"
+                                "Run: `python -m uvicorn api.app:app --reload`"
+                            )
+                        except requests.exceptions.Timeout:
+                            st.error(
+                                "Request timed out after 90s.  \n"
+                                "Check your API key is valid and you have internet access."
+                            )
+                        except requests.exceptions.HTTPError as e:
+                            st.error(f"Server error: {e}")
 
         if "last_result" in st.session_state:
             render_result_card(st.session_state["last_result"], title="Prediction")
@@ -455,10 +530,27 @@ with tab_compare:
         if len(ticket_text) < 10:
             st.warning("Please enter a subject or body first.")
         else:
+            # Grab key/provider from sidebar session state
+            _cmp_api_key  = st.session_state.get("api_key") or None
+            _cmp_provider = st.session_state.get("provider", "anthropic")
+
+            if not _cmp_api_key:
+                st.info(
+                    "Enter your API key in the sidebar to also run the baseline comparison.  \n"
+                    "Running finetuned-only for now."
+                )
+
             ft_result = None
             bl_result = None
 
-            with st.spinner("Running finetuned first, then baseline (Anthropic API — up to 90s)..."):
+            provider_label = "OpenAI GPT-4o-mini" if _cmp_provider == "openai" else "Anthropic Claude Haiku"
+            spinner_msg = (
+                f"Running finetuned, then baseline ({provider_label} — up to 90s)..."
+                if _cmp_api_key
+                else "Running finetuned model..."
+            )
+
+            with st.spinner(spinner_msg):
                 # Run finetuned
                 t0 = time.perf_counter()
                 try:
@@ -466,16 +558,20 @@ with tab_compare:
                 except Exception as e:
                     st.error(f"Finetuned error: {e}")
 
-                # Run baseline
-                try:
-                    bl_result = call_triage(server_url, ticket_text, "baseline")
-                except requests.exceptions.Timeout:
-                    st.warning(
-                        "Baseline timed out after 90s.  \n"
-                        "Check that `ANTHROPIC_API_KEY` is set in your `.env` file."
-                    )
-                except Exception as e:
-                    st.error(f"Baseline error: {e}")
+                # Run baseline (only if API key is available)
+                if _cmp_api_key:
+                    try:
+                        bl_result = call_triage(
+                            server_url, ticket_text, "baseline",
+                            api_key=_cmp_api_key, provider=_cmp_provider,
+                        )
+                    except requests.exceptions.Timeout:
+                        st.warning(
+                            "Baseline timed out after 90s.  \n"
+                            "Check your API key is valid and you have internet access."
+                        )
+                    except Exception as e:
+                        st.error(f"Baseline error: {e}")
 
                 total_ms = (time.perf_counter() - t0) * 1000
 
@@ -504,7 +600,7 @@ with tab_compare:
             else:
                 st.info(
                     "Baseline result unavailable.  \n"
-                    "Set `ANTHROPIC_API_KEY` in your `.env` file to enable it."
+                    "Enter your Anthropic or OpenAI API key in the sidebar to enable it."
                 )
 
         # Agreement summary

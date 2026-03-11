@@ -100,6 +100,30 @@ class TriageRequest(BaseModel):
         description="Model backend: 'finetuned' (fast/free) or 'baseline' (LLM)",
     )
 
+    # ── Baseline-specific optional fields ──────────────────────────────────────
+    #
+    # These allow callers (e.g. the Streamlit UI) to pass their own API key
+    # so the server doesn't need one set in its environment. The server falls
+    # back to its environment variable when these are not provided.
+    #
+    # WHY IN THE REQUEST BODY RATHER THAN A HEADER?
+    #   Simpler for the Streamlit client — it just adds two fields to the
+    #   existing JSON payload rather than managing custom HTTP headers.
+    #   Both approaches are secure over HTTPS.
+
+    api_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional user-supplied API key for the baseline backend. "
+            "If omitted, the server uses its ANTHROPIC_API_KEY env var."
+        ),
+    )
+
+    provider: str = Field(
+        default="anthropic",
+        description="LLM provider for baseline backend: 'anthropic' (default) or 'openai'",
+    )
+
     @field_validator("text")
     @classmethod
     def text_must_not_be_blank(cls, v: str) -> str:
