@@ -1,3 +1,12 @@
+---
+title: ITSM Triage Agent
+emoji: 🎫
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+
 # ITSM Triage Agent
 
 An end-to-end LLM-powered IT ticket triage pipeline. Given a ticket subject and body,
